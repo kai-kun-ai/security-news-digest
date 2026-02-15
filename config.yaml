@@ -1,0 +1,80 @@
+# Security News Digest - Configuration
+
+feeds:
+  - name: "SecurityNews (EN)"
+    url: "https://www.inoreader.com/stream/user/1005194803/tag/SecurityNews"
+    lang: "en"
+  - name: "Google News Feed"
+    url: "https://www.inoreader.com/stream/user/1005194803/tag/GoogleNewsFeed"
+    lang: "en"
+  - name: "SecurityNews (JP)"
+    url: "https://www.inoreader.com/stream/user/1005194803/tag/SecurityNews_JP"
+    lang: "ja"
+
+# How many days back to include articles
+window_days: 3
+
+# LLM settings
+llm:
+  primary:
+    api_base: "https://codex.example.com/v1"
+    api_key_env: "CODEX_API_KEY"
+    model: "codex"
+  fallback:
+    api_base: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+    model: "gpt-4o-mini"
+  max_tokens: 1024
+  temperature: 0.3
+
+# Trusted sources get higher ranking
+trusted_sources:
+  - "BleepingComputer"
+  - "The Hacker News"
+  - "CISA"
+  - "Krebs on Security"
+  - "SecurityWeek"
+  - "Dark Reading"
+  - "GBHackers"
+  - "Ars Technica"
+
+# Interest keywords for --interests filtering
+interest_keywords:
+  - "CVE"
+  - "KEV"
+  - "RCE"
+  - "remote code execution"
+  - "auth bypass"
+  - "authentication bypass"
+  - "privilege escalation"
+  - "ransomware"
+  - "APT"
+  - "supply chain"
+  - "zero-day"
+  - "0-day"
+  - "critical vulnerability"
+  - "actively exploited"
+  - "CVSS"
+  - "Kubernetes"
+  - "K8s"
+  - "Docker"
+  - "container escape"
+  - "AWS"
+  - "Azure"
+  - "GCP"
+  - "cloud security"
+  - "data breach"
+  - "malware"
+  - "phishing"
+  - "botnet"
+  - "DDoS"
+  - "SQL injection"
+  - "XSS"
+  - "SSRF"
+  - "deserialization"
+  - "buffer overflow"
+
+# Output settings
+output:
+  directory: "output"
+  filename_template: "digest_{date}.md"
