@@ -15,6 +15,26 @@ from summarizer import summarize
 from formatter import format_digest
 
 
+def load_feeds_file(path: str) -> list:
+    """Load feed URLs from a text file. Supports:
+    - One URL per line (auto lang=en)
+    - CSV format: url,lang,name
+    - Lines starting with # are ignored
+    """
+    feeds = []
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = [p.strip() for p in line.split(",")]
+            url = parts[0]
+            lang = parts[1] if len(parts) > 1 else "en"
+            name = parts[2] if len(parts) > 2 else url.split("/")[-1]
+            feeds.append({"url": url, "lang": lang, "name": name})
+    return feeds
+
+
 def load_config(config_path: str = "config.yaml") -> dict:
     """Load configuration from YAML file."""
     with open(config_path, "r") as f:
@@ -66,9 +86,17 @@ def main():
         "--output-dir", default=None,
         help="Override output directory"
     )
+    parser.add_argument(
+        "--feeds-file", default=None,
+        help="Path to a text file with feed URLs (one per line, format: URL or URL,lang,name)"
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
+
+    # Override feeds from external file if provided
+    if args.feeds_file:
+        config["feeds"] = load_feeds_file(args.feeds_file)
 
     # Fetch
     print("[*] Fetching feeds...")

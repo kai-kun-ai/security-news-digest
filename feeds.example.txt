@@ -1,0 +1,7 @@
+# Security News Digest - Feed List
+# Format: URL or URL,lang,name
+# Lines starting with # are ignored
+
+https://www.inoreader.com/stream/user/1005194803/tag/SecurityNews,en,SecurityNews (EN)
+https://www.inoreader.com/stream/user/1005194803/tag/GoogleNewsFeed,en,Google News Feed
+https://www.inoreader.com/stream/user/1005194803/tag/SecurityNews_JP,ja,SecurityNews (JP)

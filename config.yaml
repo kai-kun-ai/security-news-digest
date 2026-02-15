@@ -1,5 +1,6 @@
 # Security News Digest - Configuration
 
+# Feed list: inline here, OR override with --feeds-file <path> (one URL per line)
 feeds:
   - name: "SecurityNews (EN)"
     url: "https://www.inoreader.com/stream/user/1005194803/tag/SecurityNews"
