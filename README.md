@@ -1,71 +1,172 @@
-# Security News Digest CLI
+# Security News Digest
 
-セキュリティニュースを自動収集・重複排除・要約し、マークダウン形式のダイジェストを生成するCLIツール。
+セキュリティニュースを自動収集・重複排除・LLM要約し、カテゴリ別マークダウンダイジェストを生成するツール。  
+Docker で `make run` するだけで動きます。
 
-## Features / 機能
+---
 
-- **RSS Feed Fetching** — Inoreader経由でセキュリティニュースフィードを取得
-- **Deduplication** — URL、CVE ID、タイトル類似度による重複排除
-- **LLM Summarization** — LLMによる日本語要約・カテゴリ分類（Codex/OpenAI対応）
-- **Ranking** — 複数ソース・信頼ソース・CVSS・KEVによるランキング
-- **Interest Filtering** — キーワードベースのフィルタリング
-- **Markdown Output** — カテゴリ別マークダウンダイジェスト出力
+## 特徴
 
-## Setup / セットアップ
+- **RSS取得** — 複数フィードから過去N日分の記事を一括取得
+- **重複排除** — 同一URL・共通CVE・タイトル類似度で自動グルーピング
+- **LLM要約** — Codex互換API（プライマリ）＋ OpenAI（フォールバック）で日本語要約を生成
+- **ランキング** — 複数ソース報道・信頼ソース・CVSS 9.0+・KEV/悪用確認で優先度付け
+- **興味フィルタ** — キーワードリストで関心のある記事だけ抽出
+- **カスタムフィード** — テキストファイルでフィードURLを自由にカスタマイズ
+
+---
+
+## クイックスタート
+
+### 前提条件
+
+- Docker & Docker Compose（または `make` + Docker）
+- （LLMモード使用時）APIキー
+
+### 1. クローン
+
+```bash
+git clone https://github.com/kai-kun-ai/security-news-digest.git
+cd security-news-digest
+```
+
+### 2. 環境変数を設定
+
+```bash
+export CODEX_API_KEY="your-codex-api-key"      # プライマリLLM
+export OPENAI_API_KEY="your-openai-api-key"    # フォールバックLLM
+```
+
+> **LLM不要モード**もあります（`make run-no-llm`）。APIキー無しで動作します。
+
+### 3. 実行
+
+```bash
+make run
+```
+
+出力は `output/digest_YYYY-MM-DD.md` に保存されます。
+
+---
+
+## 使い方
+
+| コマンド | 説明 |
+|---|---|
+| `make run` | LLM要約付きでダイジェスト生成 |
+| `make run-no-llm` | ヒューリスティックモード（APIキー不要） |
+| `make run-interests` | 興味キーワードでフィルタして生成 |
+| `make run FEEDS_FILE=my-feeds.txt` | カスタムフィードリストを使用 |
+| `make build` | Dockerイメージのビルドのみ |
+| `make clean` | Dockerイメージを削除 |
+
+### Docker無しで実行
 
 ```bash
 pip install -r requirements.txt
+python main.py                        # LLM付き
+python main.py --no-llm               # ヒューリスティック
+python main.py --interests            # 興味フィルタ
+python main.py --feeds-file feeds.txt # カスタムフィード
+python main.py --config my.yaml       # カスタム設定
+python main.py --output-dir ./out     # 出力先変更
 ```
 
-### Environment Variables / 環境変数
+---
 
-LLMを使用する場合、APIキーを環境変数に設定:
+## フィードのカスタマイズ
+
+### 方法1: config.yaml を編集
+
+```yaml
+feeds:
+  - name: "My Feed"
+    url: "https://example.com/rss"
+    lang: "en"
+  - name: "日本語フィード"
+    url: "https://example.jp/feed"
+    lang: "ja"
+```
+
+### 方法2: テキストファイルで指定
+
+`feeds.example.txt` を参考に、1行1フィードで記述:
+
+```
+# コメント行は無視されます
+https://example.com/rss
+https://example.jp/feed,ja,日本語フィード
+```
+
+フォーマット: `URL` または `URL,lang,name`
 
 ```bash
-export CODEX_API_KEY="your-codex-api-key"
-export OPENAI_API_KEY="your-openai-api-key"
+make run FEEDS_FILE=my-feeds.txt
 ```
 
-## Usage / 使い方
+---
 
-```bash
-# Basic usage (with LLM summarization)
-python main.py
+## 設定 (`config.yaml`)
 
-# Without LLM (heuristic categorization only)
-python main.py --no-llm
+| セクション | 説明 |
+|---|---|
+| `feeds` | RSSフィードURLリスト（name, url, lang） |
+| `window_days` | 取得する過去日数（デフォルト: 3） |
+| `llm.primary` | プライマリLLM設定（api_base, model, api_key_env） |
+| `llm.fallback` | フォールバックLLM設定 |
+| `trusted_sources` | 信頼ソース一覧（ランキングに影響） |
+| `interest_keywords` | `--interests` フィルタ用キーワード |
+| `output` | 出力ディレクトリ・ファイル名テンプレート |
 
-# Filter by interest keywords
-python main.py --interests
+### LLM設定
 
-# Custom config file
-python main.py --config my_config.yaml
+プライマリ（Codex互換エンドポイント）に接続できない場合、自動的にフォールバック（OpenAI）に切り替わります。  
+どちらも `openai` Python SDKを使用するため、OpenAI互換APIであれば何でも使えます。
 
-# Custom output directory
-python main.py --output-dir ./my_output
+```yaml
+llm:
+  primary:
+    api_base: "https://your-codex-endpoint.com/v1"
+    api_key_env: "CODEX_API_KEY"
+    model: "codex"
+  fallback:
+    api_base: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+    model: "gpt-4o-mini"
 ```
 
-## Configuration / 設定
+---
 
-`config.yaml` で以下を設定可能:
+## 出力フォーマット
 
-- **feeds** — RSSフィードURL一覧
-- **window_days** — 取得する過去日数（デフォルト: 3日）
-- **llm** — LLM設定（プライマリ/フォールバック）
-- **trusted_sources** — 信頼ソース一覧（ランキングに影響）
-- **interest_keywords** — フィルタリング用キーワード
-- **output** — 出力ディレクトリ・ファイル名テンプレート
+ダイジェストは以下のカテゴリに自動分類されます:
 
-## Output / 出力
-
-ダイジェストは `output/digest_YYYY-MM-DD.md` に出力されます。
-
-### Categories / カテゴリ
-
-- 🔴 **Critical / Actively Exploited** — CVSS 9.0+, KEV, ゼロデイ
-- ⚠️ **Notable** — 注目すべきニュース
+- 🔴 **Critical / Actively Exploited** — CVSS 9.0+、KEV登録済み、ゼロデイ、悪用確認済み
+- ⚠️ **Notable** — 複数ソースで報道、注目度の高いニュース
 - 🇯🇵 **Japan** — 日本語ソースのニュース
-- 📰 **General** — その他
+- 📰 **General** — その他のセキュリティニュース
+
+出力例: `output/digest_2026-02-16.md`
+
+---
+
+## プロジェクト構成
+
+```
+├── Dockerfile           # コンテナ定義
+├── Makefile             # make run 等のコマンド
+├── config.yaml          # メイン設定ファイル
+├── feeds.example.txt    # フィードリストのサンプル
+├── main.py              # CLIエントリポイント
+├── fetcher.py           # RSS取得・パース
+├── dedup.py             # 重複排除（URL/CVE/タイトル類似度）
+├── summarizer.py        # LLM要約（プライマリ→フォールバック）
+├── formatter.py         # Markdown整形・カテゴリ分類
+├── requirements.txt     # Python依存パッケージ
+└── output/              # 生成されたダイジェスト
+```
+
+---
 
 ## License
 
