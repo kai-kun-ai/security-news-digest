@@ -1,7 +1,7 @@
-"""Format summarized articles into markdown output."""
+"""要約済み記事をマークダウン形式に整形するモジュール。"""
 
-from datetime import datetime, timezone
-from typing import List, Dict, Any
+from datetime import UTC, datetime
+from typing import Any
 
 CATEGORY_HEADERS = {
     "critical": "🔴 Critical / Actively Exploited",
@@ -13,23 +13,35 @@ CATEGORY_HEADERS = {
 CATEGORY_ORDER = ["critical", "notable", "jp", "general"]
 
 
-def format_digest(articles: List[Dict[str, Any]], date_str: str | None = None) -> str:
-    """Format articles into a markdown digest."""
+def format_digest(articles: list[dict[str, Any]], date_str: str | None = None) -> str:
+    """記事リストをマークダウンダイジェストに整形する。
+
+    Parameters
+    ----------
+    articles : list[dict[str, Any]]
+        要約済み記事の辞書リスト。
+    date_str : str or None
+        ダイジェストの日付文字列。``None`` の場合はUTC現在日付を使用。
+
+    Returns
+    -------
+    str
+        マークダウン形式のダイジェスト文字列。
+    """
     if date_str is None:
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        date_str = datetime.now(UTC).strftime("%Y-%m-%d")
 
     lines = [
         f"# Security News Digest — {date_str}",
         "",
-        f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"Generated: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         f"Articles: {len(articles)}",
         "",
         "---",
         "",
     ]
 
-    # Group by category
-    by_cat: Dict[str, List[Dict[str, Any]]] = {c: [] for c in CATEGORY_ORDER}
+    by_cat: dict[str, list[dict[str, Any]]] = {c: [] for c in CATEGORY_ORDER}
     for art in articles:
         cat = art.get("category", "general")
         if cat not in by_cat:
@@ -44,7 +56,6 @@ def format_digest(articles: List[Dict[str, Any]], date_str: str | None = None) -
         lines.append(f"## {CATEGORY_HEADERS[cat]}")
         lines.append("")
 
-        # Sort by source count descending
         items.sort(key=lambda x: x.get("source_count", 1), reverse=True)
 
         for art in items:

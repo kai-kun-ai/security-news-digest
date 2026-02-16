@@ -1,28 +1,40 @@
 #!/usr/bin/env python3
-"""Security News Digest CLI - Fetch, deduplicate, summarize, and format security news."""
+"""セキュリティニュースダイジェストCLI。
+
+RSSフィードの取得、重複排除、LLM要約、カテゴリ別マークダウン生成を行うツール。
+"""
 
 import argparse
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 
-from fetcher import fetch_feeds
 from dedup import deduplicate
-from summarizer import summarize
+from fetcher import fetch_feeds
 from formatter import format_digest
+from summarizer import summarize
 
 
 def load_feeds_file(path: str) -> list:
-    """Load feed URLs from a text file. Supports:
-    - One URL per line (auto lang=en)
-    - CSV format: url,lang,name
-    - Lines starting with # are ignored
+    """テキストファイルからフィードURLを読み込む。
+
+    Parameters
+    ----------
+    path : str
+        フィードURLが記載されたテキストファイルのパス。
+        1行1URL、またはCSV形式（URL,lang,name）に対応。
+        ``#`` で始まる行はコメントとして無視される。
+
+    Returns
+    -------
+    list
+        フィード設定の辞書リスト。各辞書は ``url``, ``lang``, ``name`` キーを持つ。
     """
     feeds = []
-    with open(path, "r") as f:
+    with open(path) as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -36,15 +48,40 @@ def load_feeds_file(path: str) -> list:
 
 
 def load_config(config_path: str = "config.yaml") -> dict:
-    """Load configuration from YAML file."""
-    with open(config_path, "r") as f:
+    """YAML設定ファイルを読み込む。
+
+    Parameters
+    ----------
+    config_path : str
+        設定ファイルのパス。デフォルトは ``config.yaml``。
+
+    Returns
+    -------
+    dict
+        設定内容の辞書。
+    """
+    with open(config_path) as f:
         return yaml.safe_load(f)
 
 
-def rank_groups(groups, trusted_sources):
-    """Sort article groups by relevance."""
+def rank_groups(groups: list, trusted_sources: set) -> list:
+    """記事グループを関連度でソートする。
+
+    Parameters
+    ----------
+    groups : list
+        記事グループのリスト。
+    trusted_sources : set
+        信頼ソース名のセット。
+
+    Returns
+    -------
+    list
+        ソート済みの記事グループリスト。
+    """
+
     def score(group):
-        s = len(group)  # More sources = higher
+        s = len(group)
         for art in group:
             if art.get("source_name") in trusted_sources:
                 s += 2
@@ -54,51 +91,57 @@ def rank_groups(groups, trusted_sources):
     return groups
 
 
-def filter_by_interests(groups, keywords):
-    """Filter article groups to only those matching interest keywords."""
+def filter_by_interests(groups: list, keywords: list) -> list:
+    """興味キーワードに一致する記事グループのみをフィルタリングする。
+
+    Parameters
+    ----------
+    groups : list
+        記事グループのリスト。
+    keywords : list
+        フィルタリング用のキーワードリスト。
+
+    Returns
+    -------
+    list
+        キーワードに一致したグループのリスト。
+    """
     filtered = []
     kw_lower = [k.lower() for k in keywords]
     for group in groups:
-        text = " ".join(
-            (a["title"] + " " + a.get("summary", "")).lower() for a in group
-        )
+        text = " ".join((a["title"] + " " + a.get("summary", "")).lower() for a in group)
         if any(kw in text for kw in kw_lower):
             filtered.append(group)
     return filtered
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Security News Digest - Fetch and summarize security news"
+    """CLIエントリポイント。引数を解析し、ダイジェスト生成パイプラインを実行する。"""
+    parser = argparse.ArgumentParser(description="Security News Digest - Fetch and summarize security news")
+    parser.add_argument("--config", default="config.yaml", help="Path to config file")
+    parser.add_argument(
+        "--interests",
+        action="store_true",
+        help="Filter articles by interest keywords defined in config",
     )
     parser.add_argument(
-        "--config", default="config.yaml", help="Path to config file"
+        "--no-llm",
+        action="store_true",
+        help="Skip LLM summarization (use heuristics only)",
     )
+    parser.add_argument("--output-dir", default=None, help="Override output directory")
     parser.add_argument(
-        "--interests", action="store_true",
-        help="Filter articles by interest keywords defined in config"
-    )
-    parser.add_argument(
-        "--no-llm", action="store_true",
-        help="Skip LLM summarization (use heuristics only)"
-    )
-    parser.add_argument(
-        "--output-dir", default=None,
-        help="Override output directory"
-    )
-    parser.add_argument(
-        "--feeds-file", default=None,
-        help="Path to a text file with feed URLs (one per line, format: URL or URL,lang,name)"
+        "--feeds-file",
+        default=None,
+        help="Path to a text file with feed URLs (one per line, format: URL or URL,lang,name)",
     )
     args = parser.parse_args()
 
     config = load_config(args.config)
 
-    # Override feeds from external file if provided
     if args.feeds_file:
         config["feeds"] = load_feeds_file(args.feeds_file)
 
-    # Fetch
     print("[*] Fetching feeds...")
     articles = fetch_feeds(config["feeds"], config.get("window_days", 3))
     print(f"    Fetched {len(articles)} articles")
@@ -107,57 +150,54 @@ def main():
         print("[!] No articles found. Exiting.")
         sys.exit(0)
 
-    # Deduplicate
     print("[*] Deduplicating...")
     groups = deduplicate(articles)
     print(f"    {len(groups)} unique article groups")
 
-    # Rank
     trusted = set(config.get("trusted_sources", []))
     groups = rank_groups(groups, trusted)
 
-    # Interest filtering
     if args.interests:
         keywords = config.get("interest_keywords", [])
         groups = filter_by_interests(groups, keywords)
         print(f"    {len(groups)} groups after interest filtering")
 
-    # Summarize
     if args.no_llm:
         print("[*] Skipping LLM (heuristic mode)...")
-        from summarizer import _guess_category
-        results = []
         import dedup as dedup_mod
+        from summarizer import _guess_category
+
+        results = []
         for group in groups:
             rep = group[0]
-            all_cves = set()
-            all_sources = set()
-            all_urls = []
+            all_cves: set = set()
+            all_sources: set = set()
+            all_urls: list = []
             for a in group:
                 all_cves |= dedup_mod.extract_cves(a["title"] + " " + a.get("summary", ""))
                 if a.get("source_name"):
                     all_sources.add(a["source_name"])
                 if a["url"]:
                     all_urls.append(a["url"])
-            results.append({
-                "title": rep["title"],
-                "summary": rep.get("summary", ""),
-                "category": _guess_category(group, rep),
-                "sources": list(all_sources),
-                "urls": list(set(all_urls)),
-                "cves": list(all_cves),
-                "source_count": len(group),
-                "lang": rep.get("lang", "en"),
-            })
+            results.append(
+                {
+                    "title": rep["title"],
+                    "summary": rep.get("summary", ""),
+                    "category": _guess_category(group, rep),
+                    "sources": list(all_sources),
+                    "urls": list(set(all_urls)),
+                    "cves": list(all_cves),
+                    "source_count": len(group),
+                    "lang": rep.get("lang", "en"),
+                }
+            )
     else:
         print("[*] Summarizing with LLM...")
         results = summarize(groups, config["llm"])
 
-    # Format
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     digest = format_digest(results, date_str)
 
-    # Output
     out_dir = args.output_dir or config.get("output", {}).get("directory", "output")
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     template = config.get("output", {}).get("filename_template", "digest_{date}.md")

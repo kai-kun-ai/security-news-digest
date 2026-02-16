@@ -1,16 +1,20 @@
-"""LLM-based summarization and categorization with fallback."""
+"""LLMを用いた要約・カテゴリ分類モジュール。フォールバック機能付き。"""
 
-import os
 import json
-from typing import List, Dict, Any, Optional
+import os
+import re
+from typing import Any
+
 from openai import OpenAI
+
+import dedup
 
 SYSTEM_PROMPT = """\
 You are a cybersecurity news analyst. Your task is to analyze article groups and produce a JSON response.
 
 For each article group, provide:
 1. "summary" — A concise summary in Japanese (2-3 sentences). Include CVE IDs and CVSS scores if mentioned.
-2. "category" — One of: "critical" (CVSS>=9.0, KEV, actively exploited), "notable", "jp" (Japanese-language news), "general"
+2. "category" — One of: "critical" (CVSS>=9.0, KEV, actively exploited), "notable", "jp" (Japanese), "general"
 3. "title" — A short descriptive title in Japanese
 
 Be concise and accurate. Always include CVE IDs when present.
@@ -18,18 +22,28 @@ Respond with valid JSON only: {"articles": [{"title": "...", "summary": "...", "
 """
 
 
-def _build_prompt(groups: List[List[Dict[str, Any]]]) -> str:
-    """Build the user prompt from article groups."""
+def _build_prompt(groups: list[list[dict[str, Any]]]) -> str:
+    """記事グループからLLMへのユーザープロンプトを構築する。
+
+    Parameters
+    ----------
+    groups : list[list[dict[str, Any]]]
+        記事グループのリスト。
+
+    Returns
+    -------
+    str
+        構築されたプロンプト文字列。
+    """
     parts = []
     for i, group in enumerate(groups):
         rep = group[0]
-        sources = ", ".join(set(a.get("source_name", "") for a in group if a.get("source_name")))
-        cve_text = ", ".join(set(
-            cve for a in group
-            for cve in __import__("dedup").extract_cves(a["title"] + " " + a.get("summary", ""))
-        ))
+        sources = ", ".join({a.get("source_name", "") for a in group if a.get("source_name")})
+        cve_text = ", ".join(
+            {cve for a in group for cve in dedup.extract_cves(a["title"] + " " + a.get("summary", ""))}
+        )
         parts.append(
-            f"[Article {i+1}]\n"
+            f"[Article {i + 1}]\n"
             f"Title: {rep['title']}\n"
             f"Sources ({len(group)}): {sources or 'unknown'}\n"
             f"CVEs: {cve_text or 'none'}\n"
@@ -39,8 +53,21 @@ def _build_prompt(groups: List[List[Dict[str, Any]]]) -> str:
     return "\n---\n".join(parts)
 
 
-def _call_llm(config: dict, groups: List[List[Dict[str, Any]]]) -> Optional[dict]:
-    """Try calling the LLM with the given config."""
+def _call_llm(config: dict, groups: list[list[dict[str, Any]]]) -> dict | None:
+    """指定されたLLM設定でAPIを呼び出す。
+
+    Parameters
+    ----------
+    config : dict
+        LLM設定。``api_key_env``, ``api_base``, ``model`` などを含む。
+    groups : list[list[dict[str, Any]]]
+        記事グループのリスト。
+
+    Returns
+    -------
+    dict or None
+        LLMのレスポンスをパースした辞書。失敗時は ``None``。
+    """
     api_key = os.environ.get(config["api_key_env"], "")
     if not api_key:
         return None
@@ -59,7 +86,6 @@ def _call_llm(config: dict, groups: List[List[Dict[str, Any]]]) -> Optional[dict
             temperature=config.get("temperature", 0.3),
         )
         content = response.choices[0].message.content.strip()
-        # Strip markdown code fences if present
         if content.startswith("```"):
             content = content.split("\n", 1)[1]
             if content.endswith("```"):
@@ -70,19 +96,35 @@ def _call_llm(config: dict, groups: List[List[Dict[str, Any]]]) -> Optional[dict
         return None
 
 
-def summarize(groups: List[List[Dict[str, Any]]], llm_config: dict) -> List[Dict[str, Any]]:
-    """
-    Summarize and categorize article groups using LLM.
-    Returns list of dicts with title, summary, category, sources, urls, cves.
-    Falls back to basic extraction if LLM unavailable.
-    """
-    import dedup
+def summarize(groups: list[list[dict[str, Any]]], llm_config: dict) -> list[dict[str, Any]]:
+    """記事グループをLLMで要約・カテゴリ分類する。
 
-    # Try primary, then fallback
-    primary_cfg = {**llm_config["primary"], "max_tokens": llm_config.get("max_tokens", 1024),
-                   "temperature": llm_config.get("temperature", 0.3)}
-    fallback_cfg = {**llm_config["fallback"], "max_tokens": llm_config.get("max_tokens", 1024),
-                    "temperature": llm_config.get("temperature", 0.3)}
+    プライマリLLMに接続できない場合、フォールバックLLMに自動切り替えする。
+    どちらも利用不可の場合はヒューリスティック分類を使用する。
+
+    Parameters
+    ----------
+    groups : list[list[dict[str, Any]]]
+        記事グループのリスト。
+    llm_config : dict
+        LLM設定。``primary`` と ``fallback`` の設定を含む。
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        要約済み記事の辞書リスト。各辞書は ``title``, ``summary``,
+        ``category``, ``sources``, ``urls``, ``cves`` を持つ。
+    """
+    primary_cfg = {
+        **llm_config["primary"],
+        "max_tokens": llm_config.get("max_tokens", 1024),
+        "temperature": llm_config.get("temperature", 0.3),
+    }
+    fallback_cfg = {
+        **llm_config["fallback"],
+        "max_tokens": llm_config.get("max_tokens", 1024),
+        "temperature": llm_config.get("temperature", 0.3),
+    }
 
     llm_result = _call_llm(primary_cfg, groups)
     if llm_result is None:
@@ -92,9 +134,9 @@ def summarize(groups: List[List[Dict[str, Any]]], llm_config: dict) -> List[Dict
     results = []
     for i, group in enumerate(groups):
         rep = group[0]
-        all_cves = set()
-        all_sources = set()
-        all_urls = []
+        all_cves: set = set()
+        all_sources: set = set()
+        all_urls: list = []
         for a in group:
             all_cves |= dedup.extract_cves(a["title"] + " " + a.get("summary", ""))
             if a.get("source_name"):
@@ -113,7 +155,6 @@ def summarize(groups: List[List[Dict[str, Any]]], llm_config: dict) -> List[Dict
             "lang": rep.get("lang", "en"),
         }
 
-        # Overlay LLM results if available
         if llm_result and "articles" in llm_result and i < len(llm_result["articles"]):
             llm_art = llm_result["articles"][i]
             entry["title"] = llm_art.get("title", entry["title"])
@@ -125,21 +166,39 @@ def summarize(groups: List[List[Dict[str, Any]]], llm_config: dict) -> List[Dict
     return results
 
 
-def _guess_category(group: List[Dict[str, Any]], rep: Dict[str, Any]) -> str:
-    """Heuristic category when LLM is unavailable."""
+def _guess_category(group: list[dict[str, Any]], rep: dict[str, Any]) -> str:
+    """LLMが利用不可の場合のヒューリスティックカテゴリ分類。
+
+    Parameters
+    ----------
+    group : list[dict[str, Any]]
+        同一トピックの記事グループ。
+    rep : dict[str, Any]
+        グループの代表記事。
+
+    Returns
+    -------
+    str
+        カテゴリ文字列（``critical``, ``notable``, ``jp``, ``general``）。
+    """
     text = (rep["title"] + " " + rep.get("summary", "")).lower()
 
     if rep.get("lang") == "ja":
         return "jp"
 
-    # Check for critical indicators
-    critical_terms = ["actively exploited", "kev", "cvss 9", "cvss 10", "critical vulnerability",
-                      "zero-day", "0-day", "in the wild"]
+    critical_terms = [
+        "actively exploited",
+        "kev",
+        "cvss 9",
+        "cvss 10",
+        "critical vulnerability",
+        "zero-day",
+        "0-day",
+        "in the wild",
+    ]
     if any(term in text for term in critical_terms):
         return "critical"
 
-    # CVSS score check
-    import re
     cvss_match = re.search(r"cvss[:\s]*(\d+\.?\d*)", text)
     if cvss_match and float(cvss_match.group(1)) >= 9.0:
         return "critical"
