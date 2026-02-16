@@ -201,7 +201,7 @@ llm:
 ### セットアップ
 
 ```bash
-pip install -r requirements.txt ruff pytest
+pip install -r requirements-dev.txt
 ```
 
 ### コマンド
