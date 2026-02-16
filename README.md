@@ -1,3 +1,5 @@
+[![CI](https://github.com/kai-kun-ai/security-news-digest/actions/workflows/ci.yml/badge.svg)](https://github.com/kai-kun-ai/security-news-digest/actions/workflows/ci.yml)
+
 # Security News Digest
 
 セキュリティニュースを自動収集・重複排除・LLM要約し、カテゴリ別マークダウンダイジェストを生成するツール。  
@@ -163,8 +165,32 @@ llm:
 ├── summarizer.py        # LLM要約（プライマリ→フォールバック）
 ├── formatter.py         # Markdown整形・カテゴリ分類
 ├── requirements.txt     # Python依存パッケージ
+├── pyproject.toml       # ruff設定
+├── tests/               # テスト
 └── output/              # 生成されたダイジェスト
 ```
+
+---
+
+## 開発
+
+### セットアップ
+
+```bash
+pip install -r requirements.txt ruff pytest
+```
+
+### コマンド
+
+| コマンド | 説明 |
+|---|---|
+| `make lint` | ruff によるリント・フォーマットチェック |
+| `make test` | pytest でテスト実行 |
+| `make fmt` | ruff で自動フォーマット修正 |
+
+### CI
+
+GitHub Actions で `lint` と `test` が自動実行されます（push / PR時）。
 
 ---
 

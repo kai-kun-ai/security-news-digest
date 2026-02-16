@@ -1,14 +1,28 @@
-"""RSS feed fetching and parsing."""
+"""RSSフィードの取得とパースを行うモジュール。"""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import feedparser
-from datetime import datetime, timezone, timedelta
 from dateutil import parser as dateparser
-from typing import List, Dict, Any
 
 
-def fetch_feeds(feeds_config: List[Dict[str, str]], window_days: int = 3) -> List[Dict[str, Any]]:
-    """Fetch articles from configured RSS feeds within the time window."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+def fetch_feeds(feeds_config: list[dict[str, str]], window_days: int = 3) -> list[dict[str, Any]]:
+    """設定されたRSSフィードから指定期間内の記事を取得する。
+
+    Parameters
+    ----------
+    feeds_config : list[dict[str, str]]
+        フィード設定のリスト。各辞書は ``name``, ``url``, ``lang`` キーを持つ。
+    window_days : int
+        取得する過去日数。デフォルトは3日。
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        取得した記事の辞書リスト。
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=window_days)
     articles = []
 
     for feed_cfg in feeds_config:
@@ -41,31 +55,51 @@ def fetch_feeds(feeds_config: List[Dict[str, str]], window_days: int = 3) -> Lis
     return articles
 
 
-def _parse_date(entry) -> datetime | None:
-    """Parse publication date from a feed entry."""
+def _parse_date(entry: Any) -> datetime | None:
+    """フィードエントリから公開日時をパースする。
+
+    Parameters
+    ----------
+    entry : Any
+        feedparserのエントリオブジェクト。
+
+    Returns
+    -------
+    datetime or None
+        パースされた日時。パースできない場合は ``None``。
+    """
     for field in ("published", "updated", "created"):
         val = entry.get(field)
         if val:
             try:
                 dt = dateparser.parse(val)
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
                 return dt
             except (ValueError, TypeError):
                 continue
     return None
 
 
-def _extract_source(entry) -> str:
-    """Try to extract the original source name from the entry."""
-    # Some feeds include source info
+def _extract_source(entry: Any) -> str:
+    """フィードエントリから元のソース名を抽出する。
+
+    Parameters
+    ----------
+    entry : Any
+        feedparserのエントリオブジェクト。
+
+    Returns
+    -------
+    str
+        ソース名。抽出できない場合は空文字列。
+    """
     source = getattr(entry, "source", None)
     if source:
         title = getattr(source, "title", None)
         if title:
             return title
 
-    # Try to extract from title suffix like "Title - Source Name"
     title = entry.get("title", "")
     if " - " in title:
         return title.rsplit(" - ", 1)[-1].strip()

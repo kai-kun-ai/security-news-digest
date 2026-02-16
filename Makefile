@@ -5,7 +5,7 @@ OUTPUT_DIR ?= $(PWD)/output
 FEEDS_FILE ?=
 EXTRA_ARGS ?=
 
-.PHONY: build run run-no-llm run-interests clean help
+.PHONY: build run run-no-llm run-interests clean help lint test fmt
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -32,3 +32,14 @@ run-interests: build ## Run digest with interest filtering
 
 clean: ## Remove Docker image
 	docker rmi $(IMAGE_NAME):$(TAG) 2>/dev/null || true
+
+lint: ## Run ruff check and format check
+	ruff check .
+	ruff format --check .
+
+test: ## Run pytest
+	python -m pytest tests/ -v
+
+fmt: ## Auto-fix formatting
+	ruff check --fix .
+	ruff format .
