@@ -3,3 +3,9 @@ output/
 __pycache__/
 *.pyc
 .env
+.ruff_cache/
+.pytest_cache/
+tests/
+docs/
+*.md
+!requirements.txt

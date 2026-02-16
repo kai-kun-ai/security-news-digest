@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY *.py .
+COPY main.py fetcher.py dedup.py summarizer.py formatter.py analyzer.py ./
 COPY config.yaml .
 
 RUN mkdir -p /app/output
