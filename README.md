@@ -218,6 +218,12 @@ GitHub Actions で `lint` と `test` が自動実行されます（push / PR時�
 
 ---
 
+## ドキュメント
+
+- **[チューニング ハンズオン](docs/tuning-handson.md)** — フィード追加・キーワード調整・重複排除・LLM設定・analyze-gapを使った自己改善の手順をステップバイステップで解説
+
+---
+
 ## License
 
 MIT
