@@ -58,6 +58,7 @@ make run
 | `make run` | LLM要約付きでダイジェスト生成 |
 | `make run-no-llm` | ヒューリスティックモード（APIキー不要） |
 | `make run-interests` | 興味キーワードでフィルタして生成 |
+| `make analyze REFERENCE_URL=https://example.com/blog` | 第三者ソースと比較してギャップ分析 |
 | `make run FEEDS_FILE=my-feeds.txt` | カスタムフィードリストを使用 |
 | `make build` | Dockerイメージのビルドのみ |
 | `make clean` | Dockerイメージを削除 |
@@ -66,12 +67,34 @@ make run
 
 ```bash
 pip install -r requirements.txt
-python main.py                        # LLM付き
-python main.py --no-llm               # ヒューリスティック
-python main.py --interests            # 興味フィルタ
-python main.py --feeds-file feeds.txt # カスタムフィード
-python main.py --config my.yaml       # カスタム設定
-python main.py --output-dir ./out     # 出力先変更
+python main.py                                # digest (LLM)
+python main.py --no-llm                       # digest (heuristic)
+python main.py --interests                    # digest with interest filter
+python main.py --feeds-file feeds.txt         # custom feeds
+python main.py --config my.yaml               # custom config
+python main.py --output-dir ./out             # override output directory
+python main.py analyze-gap --reference-url https://example.com/blog  # gap analysis
+```
+
+---
+
+## ギャップ分析 (Gap Analysis)
+第三者のブログと比較して、収集漏れの原因分析と改善提案を行う機能。
+
+### 例（Docker）
+
+```bash
+make analyze REFERENCE_URL=https://example.com/blog
+```
+
+### 例（ローカル実行）
+
+```bash
+python main.py analyze-gap --reference-url https://example.com/blog
+# digestファイルを指定したい場合:
+python main.py analyze-gap --reference-url https://example.com/blog --digest-file output/digest_YYYY-MM-DD.md
+# 非対話モード（レポート表示のみ）:
+python main.py analyze-gap --reference-url https://example.com/blog --auto
 ```
 
 ---
@@ -160,6 +183,7 @@ llm:
 ├── config.yaml          # メイン設定ファイル
 ├── feeds.example.txt    # フィードリストのサンプル
 ├── main.py              # CLIエントリポイント
+├── analyzer.py          # ギャップ分析（第三者ソース比較）
 ├── fetcher.py           # RSS取得・パース
 ├── dedup.py             # 重複排除（URL/CVE/タイトル類似度）
 ├── summarizer.py        # LLM要約（プライマリ→フォールバック）
