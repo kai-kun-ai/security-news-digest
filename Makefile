@@ -3,9 +3,10 @@ TAG := latest
 CONFIG ?= config.yaml
 OUTPUT_DIR ?= $(PWD)/output
 FEEDS_FILE ?=
+REFERENCE_URL ?=
 EXTRA_ARGS ?=
 
-.PHONY: build run run-no-llm run-interests clean help lint test fmt
+.PHONY: build run run-no-llm run-interests analyze clean help lint test fmt
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -21,6 +22,7 @@ run: build ## Run digest (default: with LLM)
 		-e CODEX_API_KEY=$${CODEX_API_KEY:-} \
 		-e OPENAI_API_KEY=$${OPENAI_API_KEY:-} \
 		$(IMAGE_NAME):$(TAG) \
+		digest \
 		$(if $(FEEDS_FILE),--feeds-file /app/feeds.txt,) \
 		$(EXTRA_ARGS)
 
@@ -30,6 +32,15 @@ run-no-llm: build ## Run digest without LLM (heuristic mode)
 run-interests: build ## Run digest with interest filtering
 	$(MAKE) run EXTRA_ARGS="--interests"
 
+analyze: build  ## Run gap analysis (REFERENCE_URL required)
+	docker run --rm -it \
+		-v $(PWD)/$(CONFIG):/app/config.yaml:ro \
+		-v $(OUTPUT_DIR):/app/output \
+		-e CODEX_API_KEY=$${CODEX_API_KEY:-} \
+		-e OPENAI_API_KEY=$${OPENAI_API_KEY:-} \
+		$(IMAGE_NAME):$(TAG) \
+		analyze-gap --reference-url $(REFERENCE_URL) $(EXTRA_ARGS)
+
 clean: ## Remove Docker image
 	docker rmi $(IMAGE_NAME):$(TAG) 2>/dev/null || true
 
@@ -38,7 +49,7 @@ lint: ## Run ruff check and format check
 	ruff format --check .
 
 test: ## Run pytest
-	python -m pytest tests/ -v
+	python3 -m pytest tests/ -v
 
 fmt: ## Auto-fix formatting
 	ruff check --fix .
